@@ -72,8 +72,9 @@ static EipStatus Reset(CipInstance *instance,
 /* pointer to instance*/
                        CipMessageRouterRequest *message_router_request,
                        /* pointer to message router request*/
-                       CipMessageRouterResponse *message_router_response,
-                       struct sockaddr *originator_address) { /* pointer to message router response*/
+                       CipMessageRouterResponse *message_router_response,  /* pointer to message router response*/
+                       struct sockaddr *originator_address,
+                       const int encapsulation_session) {
   (void) instance;
 
   EipStatus eip_status = kEipStatusOkSend;
@@ -125,21 +126,21 @@ void InitializeCipIdentiy(CipClass *class) {
 
   InsertAttribute( (CipInstance *) class, 1, kCipUint,
                    (void *) &class->revision,
-				   kGetableSingleAndAll ); /* revision */
+                   kGetableSingleAndAll );                 /* revision */
   InsertAttribute( (CipInstance *) class, 2, kCipUint,
                    (void *) &class->number_of_instances, kGetableSingleAndAll ); /*  largest instance number */
   InsertAttribute( (CipInstance *) class, 3, kCipUint,
                    (void *) &class->number_of_instances, kGetAttributeSingle ); /* number of instances currently existing*/
   InsertAttribute( (CipInstance *) class, 4, kCipUint, (void *) &kCipUintZero,
-		  kNotSetOrGetable ); /* optional attribute list - default = 0 */
+                   kNotSetOrGetable ); /* optional attribute list - default = 0 */
   InsertAttribute( (CipInstance *) class, 5, kCipUint, (void *) &kCipUintZero,
-		  kNotSetOrGetable ); /* optional service list - default = 0 */
+                   kNotSetOrGetable ); /* optional service list - default = 0 */
   InsertAttribute( (CipInstance *) class, 6, kCipUint,
                    (void *) &meta_class->highest_attribute_number,
-				   kGetableSingleAndAll ); /* max class attribute number*/
+                   kGetableSingleAndAll );                 /* max class attribute number*/
   InsertAttribute( (CipInstance *) class, 7, kCipUint,
                    (void *) &class->highest_attribute_number,
-				   kGetableSingleAndAll ); /* max instance attribute number*/
+                   kGetableSingleAndAll );                 /* max instance attribute number*/
 
 }
 

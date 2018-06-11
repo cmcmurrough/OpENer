@@ -1,9 +1,14 @@
 [![Build Status](https://travis-ci.org/EIPStackGroup/OpENer.svg?branch=master)](https://travis-ci.org/EIPStackGroup/OpENer)
+    <p><a href="https://scan.coverity.com/projects/opener">
+  <img alt="Coverity Scan Build Status"
+       src="https://scan.coverity.com/projects/14200/badge.svg?flat=1"/>
+</a>
+ </p>
 
 [![Stories in Ready](https://badge.waffle.io/EIPStackGroup/OpENer.svg?label=ready&title=Ready)](http://waffle.io/EIPStackGroup/OpENer)
 [![Stories in In Progress](https://badge.waffle.io/EIPStackGroup/OpENer.svg?label=in%20progress&title=In%20Progress)](http://waffle.io/EIPStackGroup/OpENer)
 
-OpENer Version 1.2.0
+OpENer Version 2.1.0
 ====================
 
 Welcome to OpENer!
@@ -74,9 +79,9 @@ Compile for Windows XP/7/8:
 2. Open Visual Studio solution in bin/win32
 3. For invoking opener type in command line:
 
-		OpENer ipaddress subnetmask gateway domainname hostaddress macaddress
+		OpENer interface_index
 
-		e.g. OpENer 192.168.0.2 255.255.255.0 192.168.0.1 test.com testdevice 00 15 C5 BF D0 87
+		e.g. OpENer 3
  
 Directory structure:
 --------------------

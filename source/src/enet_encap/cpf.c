@@ -42,7 +42,8 @@ int NotifyCommonPacketFormat(EncapsulationData *const receive_data,
         return_value = NotifyMessageRouter(
           g_common_packet_format_data_item.data_item.data,
           g_common_packet_format_data_item.data_item.length,
-          originator_address);
+          originator_address,
+          receive_data->session_handle);
         if (return_value != kEipStatusError) {
           return_value = AssembleLinearMessage(
             &g_message_router_response, &g_common_packet_format_data_item,
@@ -78,13 +79,12 @@ int NotifyConnectedCommonPacketFormat(EncapsulationData *received_data,
     if (g_common_packet_format_data_item.address_item.type_id
         == kCipItemIdConnectionAddress) /* check if ConnectedAddressItem received, otherwise it is no connected message and should not be here*/
     {     /* ConnectedAddressItem item */
-      ConnectionObject *connection_object = GetConnectedObject(
+      CipConnectionObject *connection_object = GetConnectedObject(
         g_common_packet_format_data_item.address_item.data
         .connection_identifier);
       if (NULL != connection_object) {
         /* reset the watchdog timer */
-        connection_object->inactivity_watchdog_timer =
-          GetConnectionObjectInactivityWatchdogTimerValue(connection_object);
+        ConnectionObjectResetInactivityWatchdogTimerValue(connection_object);
 
         /*TODO check connection id  and sequence count    */
         if (g_common_packet_format_data_item.data_item.type_id
@@ -95,7 +95,8 @@ int NotifyConnectedCommonPacketFormat(EncapsulationData *received_data,
           return_value = NotifyMessageRouter(
             buffer,
             g_common_packet_format_data_item.data_item.length - 2,
-            originator_address);
+            originator_address,
+            received_data->session_handle);
 
           if (return_value != kEipStatusError) {
             g_common_packet_format_data_item.address_item.data
@@ -140,9 +141,11 @@ EipStatus CreateCommonPacketFormatStructure(
   common_packet_format_data->address_info_item[1].type_id = 0;
 
   int length_count = 0;
-  common_packet_format_data->item_count = GetIntFromMessage(&data);
+  CipUint item_count = GetIntFromMessage(&data);
+  OPENER_ASSERT(4U >= item_count); /* Sanitizing data - probably needs to be changed for productive code */
+  common_packet_format_data->item_count = item_count;
   length_count += 2;
-  if (common_packet_format_data->item_count >= 1) {
+  if (common_packet_format_data->item_count >= 1U) {
     common_packet_format_data->address_item.type_id = GetIntFromMessage(&data);
     common_packet_format_data->address_item.length = GetIntFromMessage(&data);
     length_count += 4;
@@ -163,34 +166,36 @@ EipStatus CreateCommonPacketFormatStructure(
     common_packet_format_data->data_item.data = (EipUint8 *)data;
     data += common_packet_format_data->data_item.length;
     length_count += (4 + common_packet_format_data->data_item.length);
-  }
-  for (int j = 0; j < (common_packet_format_data->item_count - 2); j++) /* TODO there needs to be a limit check here???*/
-  {
-    common_packet_format_data->address_info_item[j].type_id = GetIntFromMessage(
-      &data);
-    OPENER_TRACE_INFO("Sockaddr type id: %x\n",
-                      common_packet_format_data->address_info_item[j].type_id);
-    length_count += 2;
-    if ( (common_packet_format_data->address_info_item[j].type_id
-          == kCipItemIdSocketAddressInfoOriginatorToTarget)
-         || (common_packet_format_data->address_info_item[j].type_id
-             == kCipItemIdSocketAddressInfoTargetToOriginator) ) {
-      common_packet_format_data->address_info_item[j].length =
-        GetIntFromMessage(&data);
-      common_packet_format_data->address_info_item[j].sin_family =
-        GetIntFromMessage(&data);
-      common_packet_format_data->address_info_item[j].sin_port =
-        GetIntFromMessage(&data);
-      common_packet_format_data->address_info_item[j].sin_addr =
-        GetDintFromMessage(&data);
-      for (int i = 0; i < 8; i++) {
-        common_packet_format_data->address_info_item[j].nasin_zero[i] = *data;
-        data++;
+
+    for (size_t j = 0; j < (common_packet_format_data->item_count - 2); j++) /* TODO there needs to be a limit check here???*/
+    {
+      common_packet_format_data->address_info_item[j].type_id =
+        GetIntFromMessage(
+          &data);
+      OPENER_TRACE_INFO("Sockaddr type id: %x\n",
+                        common_packet_format_data->address_info_item[j].type_id);
+      length_count += 2;
+      if ( (common_packet_format_data->address_info_item[j].type_id
+            == kCipItemIdSocketAddressInfoOriginatorToTarget)
+           || (common_packet_format_data->address_info_item[j].type_id
+               == kCipItemIdSocketAddressInfoTargetToOriginator) ) {
+        common_packet_format_data->address_info_item[j].length =
+          GetIntFromMessage(&data);
+        common_packet_format_data->address_info_item[j].sin_family =
+          GetIntFromMessage(&data);
+        common_packet_format_data->address_info_item[j].sin_port =
+          GetIntFromMessage(&data);
+        common_packet_format_data->address_info_item[j].sin_addr =
+          GetDintFromMessage(&data);
+        for (size_t i = 0; i < 8; i++) {
+          common_packet_format_data->address_info_item[j].nasin_zero[i] = *data;
+          data++;
+        }
+        length_count += 18;
+      } else { /* no sockaddr item found */
+        common_packet_format_data->address_info_item[j].type_id = 0; /* mark as not set */
+        data -= 2;
       }
-      length_count += 18;
-    } else { /* no sockaddr item found */
-      common_packet_format_data->address_info_item[j].type_id = 0; /* mark as not set */
-      data -= 2;
     }
   }
   /* set the addressInfoItems to not set if they were not received */

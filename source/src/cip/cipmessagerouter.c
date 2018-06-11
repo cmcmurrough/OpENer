@@ -51,26 +51,28 @@ CipError CreateMessageRouterRequestStructure(
 
 void InitializeCipMessageRouterClass(CipClass *cip_class) {
 
-	CipClass *meta_class = cip_class->class_instance.cip_class;
+  CipClass *meta_class = cip_class->class_instance.cip_class;
 
-    InsertAttribute( (CipInstance *) cip_class, 1, kCipUint,
-                     (void *) &cip_class->revision, kGetableSingleAndAll ); /* revision */
-    InsertAttribute( (CipInstance *) cip_class, 2, kCipUint,
-                     (void *) &cip_class->number_of_instances,
-                     kGetableSingle );                                     /*  largest instance number */
-    InsertAttribute( (CipInstance *) cip_class, 3, kCipUint,
-                     (void *) &cip_class->number_of_instances,
-					 kGetableSingle );                                     /* number of instances currently existing*/
-    InsertAttribute( (CipInstance *) cip_class, 4, kCipUint, (void *) &kCipUintZero,
-                     kGetableAll ); /* optional attribute list - default = 0 */
-    InsertAttribute( (CipInstance *) cip_class, 5, kCipUint, (void *) &kCipUintZero,
-    		kGetableAll ); /* optional service list - default = 0 */
-    InsertAttribute( (CipInstance *) cip_class, 6, kCipUint,
-                     (void *) &meta_class->highest_attribute_number,
-					 kGetableSingleAndAll ); /* max class attribute number*/
-    InsertAttribute( (CipInstance *) cip_class, 7, kCipUint,
-                     (void *) &cip_class->highest_attribute_number,
-					 kGetableSingleAndAll ); /* max instance attribute number*/
+  InsertAttribute( (CipInstance *) cip_class, 1, kCipUint,
+                   (void *) &cip_class->revision, kGetableSingleAndAll );   /* revision */
+  InsertAttribute( (CipInstance *) cip_class, 2, kCipUint,
+                   (void *) &cip_class->number_of_instances,
+                   kGetableSingle );                                       /*  largest instance number */
+  InsertAttribute( (CipInstance *) cip_class, 3, kCipUint,
+                   (void *) &cip_class->number_of_instances,
+                   kGetableSingle );                                                           /* number of instances currently existing*/
+  InsertAttribute( (CipInstance *) cip_class, 4, kCipUint,
+                   (void *) &kCipUintZero,
+                   kGetableAll );   /* optional attribute list - default = 0 */
+  InsertAttribute( (CipInstance *) cip_class, 5, kCipUint,
+                   (void *) &kCipUintZero,
+                   kGetableAll ); /* optional service list - default = 0 */
+  InsertAttribute( (CipInstance *) cip_class, 6, kCipUint,
+                   (void *) &meta_class->highest_attribute_number,
+                   kGetableSingleAndAll );                       /* max class attribute number*/
+  InsertAttribute( (CipInstance *) cip_class, 7, kCipUint,
+                   (void *) &cip_class->highest_attribute_number,
+                   kGetableSingleAndAll );                       /* max instance attribute number*/
 }
 
 EipStatus CipMessageRouterInit() {
@@ -85,7 +87,7 @@ EipStatus CipMessageRouterInit() {
                                             1, /* # of instances*/
                                             "message router", /* class name*/
                                             1, /* # class revision*/
-											InitializeCipMessageRouterClass); /* # function pointer for initialization*/
+                                            InitializeCipMessageRouterClass);                                             /* # function pointer for initialization*/
   if (NULL == message_router) {
     return kEipStatusError;
   }
@@ -170,7 +172,8 @@ EipStatus RegisterCipClass(CipClass *cip_class) {
 
 EipStatus NotifyMessageRouter(EipUint8 *data,
                               int data_length,
-                              struct sockaddr *originator_address) {
+                              struct sockaddr *originator_address,
+                              const int encapsulation_session) {
   EipStatus eip_status = kEipStatusOkSend;
   EipByte status = kCipErrorSuccess;
 
@@ -215,7 +218,9 @@ EipStatus NotifyMessageRouter(EipUint8 *data,
         registered_object->cip_class->class_name);
       eip_status = NotifyClass(registered_object->cip_class,
                                &g_message_router_request,
-                               &g_message_router_response, originator_address);
+                               &g_message_router_response,
+                               originator_address,
+                               encapsulation_session);
 
 #ifdef OPENER_TRACE_ENABLED
       if (eip_status == kEipStatusError) {
@@ -243,7 +248,7 @@ CipError CreateMessageRouterRequestStructure(
   CipMessageRouterRequest *message_router_request) {
 
   message_router_request->service = *data;
-  data++; /*TODO: Fix for 16 bit path lengths (+1 */
+  data++;
   data_length--;
 
   int number_of_decoded_bytes = DecodePaddedEPath(

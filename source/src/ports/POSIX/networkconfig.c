@@ -42,6 +42,7 @@ void ConfigureMacAddress(const char *interface) {
     memcpy( &(g_ethernet_link.physical_address), &ifr.ifr_hwaddr.sa_data,
             sizeof(g_ethernet_link.physical_address) );
   }
+  CloseSocket(fd);
 }
 
 EipStatus ConfigureNetworkInterface(const char *const network_interface) {
@@ -85,7 +86,7 @@ EipStatus ConfigureNetworkInterface(const char *const network_interface) {
   }
   fclose(file_handle);
 
-  if (inet_pton(AF_INET, gateway_string, gateway) == 1) {
+  if (inet_pton(AF_INET, gateway_string, &gateway) == 1) {
     if (gateway != LOOPBACK_BINARY) {
       interface_configuration_.gateway = gateway;
     } else {
@@ -103,6 +104,8 @@ EipStatus ConfigureNetworkInterface(const char *const network_interface) {
 
   g_multicast_configuration.starting_multicast_address = htonl(
     ntohl( inet_addr("239.192.1.0") ) + (host_id << 5) );
+
+  CloseSocket(fd);
 
   return kEipStatusOk;
 }

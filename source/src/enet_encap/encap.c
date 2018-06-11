@@ -19,6 +19,7 @@
 #include "generic_networkhandler.h"
 #include "trace.h"
 #include "socket_timer.h"
+#include "opener_error.h"
 
 /*Identity data from cipidentity.c*/
 extern EipUint16 vendor_id_;
@@ -301,9 +302,6 @@ int HandleReceivedExplictUdpData(int socket,
       if (kEipStatusOk < status) {
         /* if status is greater than 0 data has to be sent */
         status = EncapsulateData(&encapsulation_data);
-      } else if (kEipStatusError == status) {
-        /* Report error state with negative return value */
-        status = kEipStatusError;
       }
     }
   }
@@ -311,10 +309,10 @@ int HandleReceivedExplictUdpData(int socket,
 }
 
 int EncapsulateData(const EncapsulationData *const send_data) {
-  EipUint8 *communcation_buffer = send_data->communication_buffer_start + 2;
+  CipOctet *communcation_buffer = send_data->communication_buffer_start + 2;
   AddIntToMessage(send_data->data_length, &communcation_buffer);
   /*the CommBuf should already contain the correct session handle*/
-  MoveMessageNOctets(4, &communcation_buffer);
+  MoveMessageNOctets(4, (const CipOctet **)&communcation_buffer);
   AddDintToMessage(send_data->status, &communcation_buffer);
   /*the CommBuf should already contain the correct sender context*/
   /*the CommBuf should already contain the correct  options value*/
@@ -393,13 +391,13 @@ void HandleReceivedListIdentityCommandUdp(int socket,
 
 ptrdiff_t EncapsulateListIdentyResponseMessage(
   EipByte *const communication_buffer) {
-  EipUint8 *communication_buffer_runner = communication_buffer;
+  CipOctet *communication_buffer_runner = communication_buffer;
 
   AddIntToMessage( 1, &(communication_buffer_runner) ); /* Item count: one item */
   AddIntToMessage(kCipItemIdListIdentityResponse, &communication_buffer_runner);
 
   EipByte *id_length_buffer = communication_buffer_runner;
-  MoveMessageNOctets(2, &communication_buffer_runner); /*at this place the real length will be inserted below*/
+  MoveMessageNOctets(2, (const CipOctet **)&communication_buffer_runner); /*at this place the real length will be inserted below*/
 
   AddIntToMessage(kSupportedProtocolVersion, &communication_buffer_runner);
 
@@ -408,7 +406,7 @@ ptrdiff_t EncapsulateListIdentyResponseMessage(
                        &communication_buffer_runner);
 
   memset(communication_buffer_runner, 0, 8);
-  MoveMessageNOctets(8, &communication_buffer_runner);
+  MoveMessageNOctets(8, (const CipOctet **)&communication_buffer_runner);
 
   AddIntToMessage(vendor_id_, &communication_buffer_runner);
   AddIntToMessage(device_type_, &communication_buffer_runner);
@@ -432,7 +430,7 @@ ptrdiff_t EncapsulateListIdentyResponseMessage(
 void DetermineDelayTime(EipByte *buffer_start,
                         DelayedEncapsulationMessage *delayed_message_buffer) {
 
-  MoveMessageNOctets(12, &buffer_start); /* start of the sender context */
+  MoveMessageNOctets(12, (const CipOctet **)&buffer_start); /* start of the sender context */
   EipUint16 maximum_delay_time = GetIntFromMessage(
     (const EipUint8 **const)&buffer_start );
 
@@ -466,6 +464,9 @@ void HandleReceivedRegisterSessionCommand(int socket,
     for (int i = 0; i < OPENER_NUMBER_OF_SUPPORTED_SESSIONS; ++i) {
       if (g_registered_sessions[i] == socket) {
         /* the socket has already registered a session this is not allowed*/
+        OPENER_TRACE_INFO(
+          "Error: A session is already registered at socket %d\n",
+          socket);
         receive_data->session_handle = i + 1; /*return the already assigned session back, the cip spec is not clear about this needs to be tested*/
         receive_data->status = kEncapsulationProtocolInvalidCommand;
         session_index = kSessionStatusInvalid;
@@ -510,8 +511,8 @@ void HandleReceivedRegisterSessionCommand(int socket,
  *   close all corresponding TCP connections and delete session handle.
  *      pa_S_ReceiveData pointer to unregister session request with corresponding socket handle.
  */
-EipStatus HandleReceivedUnregisterSessionCommand(
-  EncapsulationData *receive_data) {
+EipStatus HandleReceivedUnregisterSessionCommand(EncapsulationData *receive_data)
+{
 
   OPENER_TRACE_INFO("encap.c: Unregister Session Command\n");
 
@@ -522,6 +523,7 @@ EipStatus HandleReceivedUnregisterSessionCommand(
     if (kEipInvalidSocket != g_registered_sessions[i]) {
       CloseTcpSocket(g_registered_sessions[i]);
       g_registered_sessions[i] = kEipInvalidSocket;
+      CloseClass3ConnectionBasedOnSession(i + 1);
       return kEipStatusOk;
     }
   }
@@ -673,12 +675,22 @@ SessionStatus CheckRegisteredSessions(EncapsulationData *receive_data) {
   return kSessionStatusInvalid;
 }
 
+void CloseSessionBySessionHandle(
+  const CipConnectionObject *const connection_object) {
+  OPENER_TRACE_INFO("encap.c: Close session by handle\n");
+  size_t session_handle = connection_object->associated_encapsulation_session;
+  CloseTcpSocket(g_registered_sessions[session_handle - 1]);
+  g_registered_sessions[session_handle - 1] = kEipInvalidSocket;
+  OPENER_TRACE_INFO("encap.c: Close session by handle done\n");
+}
+
 void CloseSession(int socket) {
   OPENER_TRACE_INFO("encap.c: Close session\n");
   for (size_t i = 0; i < OPENER_NUMBER_OF_SUPPORTED_SESSIONS; ++i) {
     if (g_registered_sessions[i] == socket) {
       CloseTcpSocket(socket);
       g_registered_sessions[i] = kEipInvalidSocket;
+      CloseClass3ConnectionBasedOnSession(i + 1);
       break;
     }
   }
@@ -690,6 +702,7 @@ void RemoveSession(const int socket) {
   for (size_t i = 0; i < OPENER_NUMBER_OF_SUPPORTED_SESSIONS; ++i) {
     if (g_registered_sessions[i] == socket) {
       g_registered_sessions[i] = kEipInvalidSocket;
+      CloseClass3ConnectionBasedOnSession(i + 1);
       break;
     }
   }
@@ -721,5 +734,52 @@ void ManageEncapsulationMessages(const MilliSeconds elapsed_time) {
         g_delayed_encapsulation_messages[i].socket = kEipInvalidSocket;
       }
     }
+  }
+}
+
+void CloseEncapsulationSessionBySockAddr(
+  const CipConnectionObject *const connection_object) {
+  for (size_t i = 0; i < OPENER_NUMBER_OF_SUPPORTED_SESSIONS; ++i) {
+    if (kEipInvalidSocket != g_registered_sessions[i]) {
+      struct sockaddr_in encapsulation_session_addr = {0};
+      socklen_t addrlength = sizeof(encapsulation_session_addr);
+      if (getpeername(g_registered_sessions[i], &encapsulation_session_addr,
+                      &addrlength) <= 0) {                                                                  /* got error */
+        int error_code = GetSocketErrorNumber();
+        char *error_message = GetErrorMessage(error_code);
+        OPENER_TRACE_ERR(
+          "encap.c: error on getting peer name on closing session: %d - %s\n",
+          error_code,
+          error_message);
+        FreeErrorMessage(error_message);
+      }
+      if(encapsulation_session_addr.sin_addr.s_addr ==
+         connection_object->originator_address.sin_addr.s_addr) {
+        CloseSession(g_registered_sessions[i]);
+      }
+    }
+  }
+}
+
+size_t GetSessionFromSocket(const int socket_handle) {
+  for (size_t i = 0; i < OPENER_NUMBER_OF_SUPPORTED_SESSIONS; ++i) {
+    if(socket_handle == g_registered_sessions[i]) {
+      return i;
+    }
+  }
+  return OPENER_NUMBER_OF_SUPPORTED_SESSIONS;
+}
+
+void CloseClass3ConnectionBasedOnSession(size_t encapsulation_session_handle) {
+  DoublyLinkedListNode *node = connection_list.first;
+  while(NULL != node) {
+    CipConnectionObject *connection_object = node->data;
+    if(kConnectionObjectTransportClassTriggerTransportClass3 ==
+       ConnectionObjectGetTransportClassTriggerTransportClass(connection_object)
+       && connection_object->associated_encapsulation_session ==
+       encapsulation_session_handle ) {
+      connection_object->connection_close_function(connection_object);
+    }
+    node = node->next;
   }
 }
